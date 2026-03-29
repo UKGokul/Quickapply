@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, date, time
 from database import get_db
 from models.application import Application
 from jose import jwt, JWTError
@@ -33,7 +33,19 @@ class ApplicationCreate(BaseModel):
     organization: Optional[str] = None
     location: Optional[str] = None
     job_ad_text: Optional[str] = None
-    deadline: Optional[str] = None     # "2026-05-01"
+    deadline: Optional[date] = None     # YYYY-MM-DD
+    @validator("deadline", pre=True)
+    def validate_deadline_format(cls, value):
+        if value in (None, ""):
+            return None
+        if isinstance(value, date):
+            return value
+        if isinstance(value, str):
+            try:
+                return datetime.strptime(value, "%Y-%m-%d").date()
+            except ValueError as exc:
+                raise ValueError("Invalid deadline format. Expected YYYY-MM-DD") from exc
+        raise ValueError("Invalid deadline format. Expected YYYY-MM-DD")
     contact_email: Optional[str] = None
     contact_name: Optional[str] = None
     notes: Optional[str] = None
@@ -78,7 +90,7 @@ async def create_application(
         organization=data.organization,
         location=data.location,
         job_ad_text=data.job_ad_text,
-        deadline=datetime.strptime(data.deadline, "%Y-%m-%d") if data.deadline else None,
+        deadline=datetime.combine(data.deadline, time.min) if data.deadline else None,
         contact_email=data.contact_email,
         contact_name=data.contact_name,
         notes=data.notes,
@@ -90,7 +102,8 @@ async def create_application(
     return {
         "message": "Application created",
         "application_id": application.id,
-        "status": application.status
+        "status": application.status,
+        "deadline_format": "YYYY-MM-DD"
     }
 
 @router.patch("/{application_id}/status")
