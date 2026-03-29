@@ -10,6 +10,30 @@ import os
 
 load_dotenv()
 
+
+def _parse_csv_env(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [origin.strip() for origin in value.split(",") if origin.strip()]
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+frontend_origins = _parse_csv_env(
+    os.getenv("FRONTEND_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+)
+
+# Cookie/session auth requires credentials, but bearer-token-only auth should keep this off.
+allow_credentials = _env_bool("CORS_ALLOW_CREDENTIALS", default=False)
+if allow_credentials and not frontend_origins:
+    # Credentials + wildcard/empty origins is blocked by browsers; disable credentials if misconfigured.
+    allow_credentials = False
+
 app = FastAPI(
     title="QuickApply.AI",
     description="AI-powered college application platform",
@@ -18,16 +42,18 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=frontend_origins,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 @app.on_event("startup")
 async def startup():
     await init_db()
     print("✅ Database initialized")
+
 
 # Register routers
 app.include_router(auth_router)
@@ -35,9 +61,11 @@ app.include_router(profile_router)
 app.include_router(documents_router)
 app.include_router(applications_router)
 
+
 @app.get("/")
 def root():
     return {"status": "QuickApply.AI backend is running"}
+
 
 @app.get("/health")
 def health():
@@ -46,6 +74,7 @@ def health():
         "ai_provider": os.getenv("AI_PROVIDER", "not set"),
         "database": os.getenv("DATABASE_URL", "not set")
     }
+
 
 @app.get("/dev/token")
 async def dev_token():
