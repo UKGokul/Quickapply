@@ -12,13 +12,19 @@ from sqlalchemy.future import select
 
 from database import get_db
 from models.profile import Profile
+from jose import jwt, JWTError
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from services.pdf_parser import extract_text_from_pdf
+import os
+from uuid import uuid4
 
 router = APIRouter(prefix="/profile", tags=["Profile"])
 security = HTTPBearer()
 
 SECRET_KEY = os.getenv("SECRET_KEY", "changeme")
 ALGORITHM = "HS256"
+ALLOWED_CV_MIME_TYPE = "application/pdf"
+MAX_CV_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
 
 # --- Auth helper ---
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -181,19 +187,49 @@ async def upload_cv(
     user_id: str = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    # Validate file type
-    if not file.filename.endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files accepted")
+    # Validate MIME type
+    if file.content_type != ALLOWED_CV_MIME_TYPE:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "INVALID_FILE_TYPE",
+                "message": "Only PDF files are allowed.",
+                "field": "file",
+                "expected_mime_type": ALLOWED_CV_MIME_TYPE
+            }
+        )
 
-    # Save file temporarily
+    # Save file temporarily using a unique filename while enforcing max size
     os.makedirs("uploads", exist_ok=True)
-    file_path = f"uploads/{user_id}_cv.pdf"
+    file_path = os.path.join("uploads", f"{uuid4().hex}.pdf")
+    total_size = 0
 
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    try:
+        with open(file_path, "wb") as buffer:
+            while True:
+                chunk = file.file.read(1024 * 1024)  # 1 MB chunks
+                if not chunk:
+                    break
 
-    # Extract text
-    raw_text = extract_text_from_pdf(file_path)
+                total_size += len(chunk)
+                if total_size > MAX_CV_FILE_SIZE_BYTES:
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "code": "FILE_TOO_LARGE",
+                            "message": "File exceeds the maximum allowed size.",
+                            "field": "file",
+                            "max_size_bytes": MAX_CV_FILE_SIZE_BYTES
+                        }
+                    )
+
+                buffer.write(chunk)
+
+        # Extract text
+        raw_text = extract_text_from_pdf(file_path)
+    finally:
+        if os.path.exists(file_path):
+            os.remove(file_path)
 
     # Save to profile
     result = await db.execute(select(Profile).where(Profile.user_id == user_id))
