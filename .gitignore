@@ -1,0 +1,17 @@
+@"
+# secrets
+backend/.env
+.env
+
+# python cache
+__pycache__/
+*.pyc
+
+# virtual environments
+.venv/
+venv/
+
+# databases
+*.db
+backend/quickapply.db
+"@ | Set-Content .gitignore

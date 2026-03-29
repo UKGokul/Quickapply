@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+python-dotenv
+anthropic
+pymupdf
+pdfplumber
+python-multipart
+pydantic
+sqlalchemy
+aiosqlite
+python-jose[cryptography]
+passlib[bcrypt]
+groq
+google-generativeai
