@@ -46,15 +46,3 @@ def health():
         "ai_provider": os.getenv("AI_PROVIDER", "not set"),
         "database": os.getenv("DATABASE_URL", "not set")
     }
-
-@app.get("/dev/token")
-async def dev_token():
-    """DEVELOPMENT ONLY - remove before production"""
-    from jose import jwt
-    from datetime import datetime, timedelta
-    payload = {
-        "sub": "29cf3a20-8688-431a-b5f0-2a5a43a20976",  # your test user ID
-        "exp": datetime.utcnow() + timedelta(days=30)
-    }
-    token = jwt.encode(payload, os.getenv("SECRET_KEY", "changeme"), algorithm="HS256")
-    return {"token": token, "note": "DEV ONLY - 30 day token"}
